@@ -1,8 +1,10 @@
 package meta
 
 import (
+	mydb "GoFileStore/db"
 	"fmt"
 	"sync"
+	"time"
 )
 
 // 描述文件元结构
@@ -49,4 +51,44 @@ func UpdateFileMeta(f FileMeta) {
 // 删除
 func RemoveFileMeta(k string) {
 	delete(fileMetas, k)
+}
+
+// 排序
+const baseFormat = "2006-01-02 15:04:05"
+
+type ByUploadTime []FileMeta
+
+func (a ByUploadTime) Len() int {
+	return len(a)
+}
+
+func (a ByUploadTime) Swap(i, j int) {
+	a[i], a[j] = a[j], a[i]
+}
+
+func (a ByUploadTime) Less(i, j int) bool { //按照时间排序
+	iTime, _ := time.Parse(baseFormat, a[i].UploadAt)
+	jTime, _ := time.Parse(baseFormat, a[j].UploadAt)
+	return iTime.UnixNano() > jTime.UnixNano()
+}
+
+//DB  2.0
+
+func UpdateFileMetaDB(fmeta FileMeta) bool {
+	return mydb.OnFileUploadFinished(fmeta.FileSha1, fmeta.FileName, fmeta.FileSize, fmeta.Location)
+
+}
+
+func GetFileMetaDB(fileSha1 string) (*FileMeta, error) {
+	tfile, err := mydb.GetFileMeta(fileSha1)
+	if tfile == nil || err != nil {
+		return nil, err
+	}
+	fmeta := FileMeta{
+		FileSha1: tfile.FileHash,
+		FileName: tfile.FileName.String,
+		FileSize: tfile.FileSize.Int64,
+		Location: tfile.FileAddr.String,
+	}
+	return &fmeta, nil
 }

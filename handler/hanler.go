@@ -14,16 +14,16 @@ import (
 )
 
 // 打印请求行和头部信息
-func display(r *http.Request) {
-	fmt.Println("Method:", r.Method)
-	fmt.Println("URL:", r.URL.String())
-	fmt.Println("Headers:")
-	for name, values := range r.Header {
-		for _, value := range values {
-			fmt.Printf("%s: %s\n", name, value)
-		}
-	}
-}
+// func display(r *http.Request) {
+// 	fmt.Println("Method:", r.Method)
+// 	fmt.Println("URL:", r.URL.String())
+// 	fmt.Println("Headers:")
+// 	for name, values := range r.Header {
+// 		for _, value := range values {
+// 			fmt.Printf("%s: %s\n", name, value)
+// 		}
+// 	}
+// }
 
 // 文件上传
 func UploadHandler(w http.ResponseWriter, r *http.Request) {
@@ -77,8 +77,8 @@ func UploadHandler(w http.ResponseWriter, r *http.Request) {
 		//计算文件元 key
 		newFile.Seek(0, 0)
 		fileMeta.FileSha1 = util.FileSha1(newFile)
-		meta.UpdateFileMeta(fileMeta)
-
+		// meta.UpdateFileMeta(fileMeta)
+		meta.UpdateFileMetaDB(fileMeta)
 		//debug
 		fmt.Printf("Sha1:%s", fileMeta.FileSha1)
 
@@ -96,9 +96,10 @@ func GetFileMetaHandler(w http.ResponseWriter, r *http.Request) {
 
 	r.ParseForm() //解析表达数据 ，并存储在r.Form
 	filehash := r.Form["filehash"][0]
-	fMeta, ok := meta.GetFileMeta(filehash)
+	// fMeta, ok := meta.GetFileMeta(filehash)
+	fMeta, ok := meta.GetFileMetaDB(filehash)
 
-	if !ok {
+	if nil != ok {
 		w.WriteHeader(http.StatusInternalServerError) //http 状态码 500
 		io.WriteString(w, "Failed GetFileMeta!")
 
@@ -120,8 +121,10 @@ func DownloadHandler(w http.ResponseWriter, r *http.Request) {
 
 	r.ParseForm()
 	fsha1 := r.Form.Get("filehash")
-	fm, ok := meta.GetFileMeta(fsha1)
-	if !ok {
+	// fm, ok := meta.GetFileMeta(fsha1)
+	fm, ok := meta.GetFileMetaDB(fsha1)
+
+	if nil != ok {
 		w.WriteHeader(http.StatusInternalServerError) //http 状态码 500
 		io.WriteString(w, "Failed GetFileMeta!")
 
@@ -144,7 +147,7 @@ func DownloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	meta.Desc(fm)
+	meta.Desc(*fm)
 	w.Header().Set("Content-Type", "application/octect-stream")
 	w.Header().Set("Content-disposition", `attachment;filename="`+fm.FileName+`"`)
 	w.Write(data)
@@ -169,8 +172,10 @@ func FileUpdataMetaHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	curFileMeta, ok := meta.GetFileMeta(fileSha1)
-	if !ok {
+	// curFileMeta, ok := meta.GetFileMeta(fileSha1)
+	curFileMeta, ok := meta.GetFileMetaDB(fileSha1)
+
+	if ok != nil {
 		w.WriteHeader(http.StatusInternalServerError) //http 状态码 500
 		io.WriteString(w, "Failed GetFileMeta!")
 
@@ -180,7 +185,8 @@ func FileUpdataMetaHandler(w http.ResponseWriter, r *http.Request) {
 	//修改Meta信息
 	curFileMeta.FileName = newFileName
 
-	meta.UpdateFileMeta(curFileMeta)
+	meta.UpdateFileMeta(*curFileMeta)
+	meta.UpdateFileMetaDB(*curFileMeta)
 
 	data, err := json.Marshal(curFileMeta)
 	if err != nil {
