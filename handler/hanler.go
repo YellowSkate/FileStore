@@ -1,11 +1,13 @@
 package handler
 
 import (
+	dblayer "GoFileStore/db"
 	"GoFileStore/meta"
 	"GoFileStore/util"
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
 
 	// "io/ioutil" //在go1.16之后 可以直接使用 io
 	"net/http"
@@ -78,9 +80,20 @@ func UploadHandler(w http.ResponseWriter, r *http.Request) {
 		newFile.Seek(0, 0)
 		fileMeta.FileSha1 = util.FileSha1(newFile)
 		// meta.UpdateFileMeta(fileMeta)
-		meta.UpdateFileMetaDB(fileMeta)
-		//debug
-		fmt.Printf("Sha1:%s", fileMeta.FileSha1)
+
+		meta.UploadFileMetaDB(fileMeta) //插入数据库
+		//Todo 判断插入成功
+		// fmt.Printf("Sha1:%s", fileMeta.FileSha1)//debug
+
+		//更新用户文件表信息
+		r.ParseForm()
+		username := r.Form.Get("username")
+		suc := dblayer.OnUserFileUploadFinished(username, fileMeta.FileSha1, fileMeta.FileName, fileMeta.FileSize)
+		if suc {
+			http.Redirect(w, r, "/www/view/home.html", http.StatusFound)
+		} else {
+			w.Write([]byte("Upload uesr_file Failed."))
+		}
 
 		http.Redirect(w, r, "/file/upload/suc", http.StatusFound) //重定向
 	}
@@ -147,13 +160,13 @@ func DownloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	meta.Desc(*fm)
+	// meta.Desc(*fm)
 	w.Header().Set("Content-Type", "application/octect-stream")
 	w.Header().Set("Content-disposition", `attachment;filename="`+fm.FileName+`"`)
 	w.Write(data)
 }
 
-//修改文件元信息
+//修改文件元信息  //tod
 
 func FileUpdataMetaHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
@@ -186,7 +199,7 @@ func FileUpdataMetaHandler(w http.ResponseWriter, r *http.Request) {
 	curFileMeta.FileName = newFileName
 
 	meta.UpdateFileMeta(*curFileMeta)
-	meta.UpdateFileMetaDB(*curFileMeta)
+	meta.UpdateFileMetaDB(*curFileMeta) //TODO 修改文件名字
 
 	data, err := json.Marshal(curFileMeta)
 	if err != nil {
@@ -218,5 +231,75 @@ func FileDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	meta.RemoveFileMeta(fileSha1)
 
 	w.WriteHeader(http.StatusOK)
+
+}
+
+// 获取用户文件信息
+func FileQueryHandler(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+
+	limitCnt, _ := strconv.Atoi(r.Form.Get("limit"))
+	username := r.Form.Get("username")
+
+	userFiles, err := dblayer.QueryUserFileMetas(username, limitCnt)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	data, err := json.Marshal(userFiles)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Write(data)
+}
+
+// 秒传
+func TryFastUploadHandler(w http.ResponseWriter, r *http.Request) {
+	//解析请求
+	r.ParseForm()
+	username := r.Form.Get("username")
+	filehash := r.Form.Get("filehash")
+	filename := r.Form.Get("filename")
+	filesize, _ := strconv.Atoi(r.Form.Get("filesize"))
+
+	//从文件表中查询相同hash的文件记录
+
+	fileMeta, err := meta.GetFileMetaDB(filehash)
+	if nil != err {
+		fmt.Println(err.Error())
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	//查不到记录返回秒传失败
+	if nil == fileMeta {
+		resp := util.RespMsg{
+			Code: -1,
+			Msg:  "秒传失败,请使用普通接口上传",
+		}
+		w.Write(resp.JSONBytes())
+		return
+	}
+
+	//将文件信息填入用户表,进行秒传
+	suc := dblayer.OnUserFileUploadFinished(username, filehash, filename, int64(filesize))
+	if suc {
+		resp := util.RespMsg{
+			Code: 0,
+			Msg:  "秒传成功",
+		}
+		w.Write(resp.JSONBytes())
+		return
+	} else {
+		resp := util.RespMsg{
+			Code: -1,
+			Msg:  "秒传失败,请重试",
+		}
+		w.Write(resp.JSONBytes())
+		return
+
+	}
 
 }

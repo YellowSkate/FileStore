@@ -72,13 +72,19 @@ func (a ByUploadTime) Less(i, j int) bool { //按照时间排序
 	return iTime.UnixNano() > jTime.UnixNano()
 }
 
-//DB  2.0
+// DB  2.0
+// 上传 数据库
+func UploadFileMetaDB(fmeta FileMeta) bool {
+	return mydb.OnFileUploadFinished(fmeta.FileSha1, fmeta.FileName, fmeta.FileSize, fmeta.Location)
+}
 
+// 更新文件
 func UpdateFileMetaDB(fmeta FileMeta) bool {
 	return mydb.OnFileUploadFinished(fmeta.FileSha1, fmeta.FileName, fmeta.FileSize, fmeta.Location)
 
 }
 
+// 获取文件
 func GetFileMetaDB(fileSha1 string) (*FileMeta, error) {
 	tfile, err := mydb.GetFileMeta(fileSha1)
 	if tfile == nil || err != nil {
